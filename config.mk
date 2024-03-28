@@ -3,3 +3,4 @@ CFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=700
 PREFIX = /usr/local
 MANPREFIX = ${PREFIX}/share/man
 LAYOUT = mobintl
+POPUP = 1

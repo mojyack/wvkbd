@@ -37,16 +37,21 @@ static struct wl_touch *touch;
 static struct wl_region *empty_region;
 static struct zwlr_layer_shell_v1 *layer_shell;
 static struct zwlr_layer_surface_v1 *layer_surface;
+#if POPUP
 static struct xdg_wm_base *wm_base;
 static struct xdg_surface *popup_xdg_surface;
 static struct xdg_popup *popup_xdg_popup;
 static struct xdg_positioner *popup_xdg_positioner;
+#endif
 static struct zwp_virtual_keyboard_manager_v1 *vkbd_mgr;
 static struct wp_fractional_scale_v1 *wfs_draw_surf;
 static struct wp_fractional_scale_manager_v1 *wfs_mgr;
-static struct wp_viewport *draw_surf_viewport, *popup_draw_surf_viewport;
+static struct wp_viewport *draw_surf_viewport;
 static struct wp_viewporter *viewporter;
+#if POPUP
+static struct wp_viewport *popup_draw_surf_viewport;
 static bool popup_xdg_surface_configured;
+#endif
 
 struct Output {
     uint32_t name;
@@ -62,7 +67,10 @@ static int wl_outputs_size;
 
 /* drawing */
 static struct drw draw_ctx;
-static struct drwsurf draw_surf, popup_draw_surf;
+static struct drwsurf draw_surf;
+#if POPUP
+static struct drwsurf popup_draw_surf;
+#endif
 
 /* layer surface parameters */
 static uint32_t layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
@@ -191,9 +199,11 @@ wl_touch_down(void *data, struct wl_touch *wl_touch, uint32_t serial,
               uint32_t time, struct wl_surface *surface, int32_t id,
               wl_fixed_t x, wl_fixed_t y)
 {
+#if POPUP
     if(!popup_xdg_surface_configured) {
         return;
     }
+#endif
 
     struct key *next_key;
     uint32_t touch_x, touch_y;
@@ -217,9 +227,11 @@ void
 wl_touch_up(void *data, struct wl_touch *wl_touch, uint32_t serial,
             uint32_t time, int32_t id)
 {
+#if POPUP
     if(!popup_xdg_surface_configured) {
         return;
     }
+#endif
 
     kbd_release_key(&keyboard, time);
 }
@@ -228,9 +240,11 @@ void
 wl_touch_motion(void *data, struct wl_touch *wl_touch, uint32_t time,
                 int32_t id, wl_fixed_t x, wl_fixed_t y)
 {
+#if POPUP
     if(!popup_xdg_surface_configured) {
         return;
     }
+#endif
 
     uint32_t touch_x, touch_y;
 
@@ -280,9 +294,11 @@ void
 wl_pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
                   wl_fixed_t surface_x, wl_fixed_t surface_y)
 {
+#if POPUP
     if(!popup_xdg_surface_configured) {
         return;
     }
+#endif
 
     cur_x = wl_fixed_to_int(surface_x);
     cur_y = wl_fixed_to_int(surface_y);
@@ -296,9 +312,11 @@ void
 wl_pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
                   uint32_t time, uint32_t button, uint32_t state)
 {
+#if POPUP
     if(!popup_xdg_surface_configured) {
         return;
     }
+#endif
 
     struct key *next_key;
     cur_press = state == WL_POINTER_BUTTON_STATE_PRESSED;
@@ -325,9 +343,11 @@ void
 wl_pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
                 uint32_t axis, wl_fixed_t value)
 {
+#if POPUP
     if(!popup_xdg_surface_configured) {
         return;
     }
+#endif
 
     kbd_next_layer(&keyboard, NULL, (value >= 0));
     drwsurf_flip(keyboard.surf);
@@ -442,6 +462,7 @@ static const struct wl_output_listener output_listener = {
     .done = display_handle_done,
     .scale = display_handle_scale};
 
+#if POPUP
 static void
 xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial)
 {
@@ -451,6 +472,7 @@ xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial)
 static const struct xdg_wm_base_listener xdg_wm_base_listener = {
     .ping = xdg_wm_base_ping,
 };
+#endif
 
 void
 handle_global(void *data, struct wl_registry *registry, uint32_t name,
@@ -477,9 +499,11 @@ handle_global(void *data, struct wl_registry *registry, uint32_t name,
     } else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         layer_shell =
             wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 1);
+#if POPUP
     } else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
         wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener(wm_base, &xdg_wm_base_listener, NULL);
+#endif
     } else if (strcmp(interface,
                       wp_fractional_scale_manager_v1_interface.name) == 0) {
         wfs_mgr = wl_registry_bind(
@@ -509,6 +533,7 @@ handle_global_remove(void *data, struct wl_registry *registry, uint32_t name)
     }
 }
 
+#if POPUP
 static void
 xdg_popup_surface_configure(void *data, struct xdg_surface *xdg_surface,
                             uint32_t serial)
@@ -537,6 +562,7 @@ static const struct xdg_popup_listener xdg_popup_listener = {
     .configure = xdg_popup_configure,
     .popup_done = xdg_popup_done,
 };
+#endif
 
 static void
 wp_fractional_scale_preferred_scale(
@@ -613,6 +639,7 @@ layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
             wl_surface_set_buffer_scale(draw_surf.surf, keyboard.scale);
         }
 
+#if POPUP
         if (popup_xdg_popup) {
             xdg_popup_destroy(popup_xdg_popup);
         }
@@ -649,6 +676,7 @@ layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
         }
 
         wl_surface_commit(popup_draw_surf.surf);
+#endif
 
         zwlr_layer_surface_v1_ack_configure(surface, serial);
         kbd_resize(&keyboard, layouts, NumLayouts);
@@ -994,9 +1022,11 @@ main(int argc, char **argv)
     }
 
     draw_surf.ctx = &draw_ctx;
-    popup_draw_surf.ctx = &draw_ctx;
     keyboard.surf = &draw_surf;
+#if POPUP
+    popup_draw_surf.ctx = &draw_ctx;
     keyboard.popup_surf = &popup_draw_surf;
+#endif
 
     struct wl_registry *registry = wl_display_get_registry(display);
     wl_registry_add_listener(registry, &registry_listener, NULL);
@@ -1011,15 +1041,19 @@ main(int argc, char **argv)
     if (layer_shell == NULL) {
         die("layer_shell not available\n");
     }
+#if POPUP
     if (wm_base == NULL) {
         die("wm_base not available\n");
     }
+#endif
     if (vkbd_mgr == NULL) {
         die("virtual_keyboard_manager not available\n");
     }
 
     empty_region = wl_compositor_create_region(compositor);
+#if POPUP
     popup_xdg_positioner = xdg_wm_base_create_positioner(wm_base);
+#endif
 
     keyboard.vkbd =
         zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(vkbd_mgr, seat);

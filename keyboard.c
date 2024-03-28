@@ -328,8 +328,10 @@ kbd_release_key(struct kbd *kb, uint32_t time)
 
     drwsurf_flip(kb->surf);
 
+#if POPUP
     kbd_clear_last_popup(kb);
     drwsurf_flip(kb->popup_surf);
+#endif
 }
 
 void
@@ -357,8 +359,10 @@ kbd_motion_key(struct kbd *kb, uint32_t time, uint32_t x, uint32_t y)
 
     drwsurf_flip(kb->surf);
 
+#if POPUP
     kbd_clear_last_popup(kb);
     drwsurf_flip(kb->popup_surf);
+#endif
 }
 
 void
@@ -492,7 +496,9 @@ kbd_press_key(struct kbd *kb, struct key *k, uint32_t time)
     }
 
     drwsurf_flip(kb->surf);
+#if POPUP
     drwsurf_flip(kb->popup_surf);
+#endif
 }
 
 void
@@ -535,6 +541,7 @@ kbd_print_key_stdout(struct kbd *kb, struct key *k)
     fflush(stdout);
 }
 
+#if POPUP
 void
 kbd_clear_last_popup(struct kbd *kb)
 {
@@ -547,6 +554,7 @@ kbd_clear_last_popup(struct kbd *kb)
         kb->last_popup_w = kb->last_popup_h = 0;
     }
 }
+#endif
 
 void
 kbd_draw_key(struct kbd *kb, struct key *k, enum key_draw_type type)
@@ -577,6 +585,7 @@ kbd_draw_key(struct kbd *kb, struct key *k, enum key_draw_type type)
                   KBD_KEY_BORDER, label, scheme->font_description);
     wl_surface_damage(kb->surf->surf, k->x, k->y, k->w, k->h);
 
+#if POPUP
     if (type == Press || type == Unpress) {
         kbd_clear_last_popup(kb);
 
@@ -595,6 +604,7 @@ kbd_draw_key(struct kbd *kb, struct key *k, enum key_draw_type type)
         wl_surface_damage(kb->popup_surf->surf, k->x, kb->last_popup_y, k->w,
                           k->h);
     }
+#endif
 }
 
 void
@@ -630,7 +640,9 @@ kbd_resize(struct kbd *kb, struct layout *layouts, uint8_t layoutcount)
             layoutcount);
 
     drwsurf_resize(kb->surf, kb->w, kb->h, kb->scale);
+#if POPUP
     drwsurf_resize(kb->popup_surf, kb->w, kb->h * 2, kb->scale);
+#endif
     for (int i = 0; i < layoutcount; i++) {
         if (kb->debug) {
             if (layouts[i].name)
