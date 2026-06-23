@@ -101,6 +101,9 @@ struct kbd {
 
 	bool print;
 	bool print_intersect;
+	bool swipe_arrows;
+	uint32_t swipe_step;
+	uint32_t swipe_hold_ms;
 	uint32_t w, h;
 	double scale;
 	double preferred_scale, preferred_fractional_scale;
@@ -141,6 +144,7 @@ size_t kbd_get_layer_index(struct kbd *kb, struct layout *l);
 void kbd_unpress_key(struct kbd *kb, uint32_t time);
 void kbd_release_key(struct kbd *kb, uint32_t time);
 void kbd_motion_key(struct kbd *kb, uint32_t time, uint32_t x, uint32_t y);
+void kbd_emit_key(struct kbd *kb, uint32_t code, uint32_t time);
 void kbd_press_key(struct kbd *kb, struct key *k, uint32_t time);
 void kbd_print_key_stdout(struct kbd *kb, struct key *k);
 void kbd_print_first_utf8_char_stdout(const char *str);

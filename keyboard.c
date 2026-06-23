@@ -363,6 +363,16 @@ kbd_unpress_key(struct kbd *kb, uint32_t time)
 }
 
 void
+kbd_emit_key(struct kbd *kb, uint32_t code, uint32_t time)
+{
+    zwp_virtual_keyboard_v1_modifiers(kb->vkbd, kb->mods, 0, 0, 0);
+    zwp_virtual_keyboard_v1_key(kb->vkbd, time, code,
+                                WL_KEYBOARD_KEY_STATE_PRESSED);
+    zwp_virtual_keyboard_v1_key(kb->vkbd, time, code,
+                                WL_KEYBOARD_KEY_STATE_RELEASED);
+}
+
+void
 kbd_release_key(struct kbd *kb, uint32_t time)
 {
     kbd_unpress_key(kb, time);

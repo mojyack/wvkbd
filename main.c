@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/signalfd.h>
+#include <sys/timerfd.h>
 #include <poll.h>
 #include <unistd.h>
 #include <wayland-client-protocol.h>
@@ -18,6 +19,7 @@
 #include <wchar.h>
 
 #include "keyboard.h"
+#include "swipe.h"
 #include "config.h"
 
 /* lazy die macro */
@@ -258,6 +260,11 @@ wl_touch_down(void *data, struct wl_touch *wl_touch, uint32_t serial,
     touch_x = wl_fixed_to_int(x);
     touch_y = wl_fixed_to_int(y);
 
+    if (keyboard.swipe_arrows) {
+        swipe_down(touch_x, touch_y, time);
+        return;
+    }
+
     kbd_unpress_key(&keyboard, time);
 
     next_key = kbd_get_key(&keyboard, touch_x, touch_y);
@@ -278,6 +285,11 @@ wl_touch_up(void *data, struct wl_touch *wl_touch, uint32_t serial,
         return;
     }
 
+    if (keyboard.swipe_arrows) {
+        swipe_up(time);
+        return;
+    }
+
     kbd_release_key(&keyboard, time);
 }
 
@@ -293,6 +305,11 @@ wl_touch_motion(void *data, struct wl_touch *wl_touch, uint32_t time,
 
     touch_x = wl_fixed_to_int(x);
     touch_y = wl_fixed_to_int(y);
+
+    if (keyboard.swipe_arrows) {
+        swipe_motion(touch_x, touch_y, time);
+        return;
+    }
 
     kbd_motion_key(&keyboard, time, touch_x, touch_y);
 }
@@ -345,7 +362,11 @@ wl_pointer_motion(void *data, struct wl_pointer *wl_pointer, uint32_t time,
     cur_y = wl_fixed_to_int(surface_y);
 
     if (cur_press) {
-        kbd_motion_key(&keyboard, time, cur_x, cur_y);
+        if (keyboard.swipe_arrows) {
+            swipe_motion(cur_x, cur_y, time);
+        } else {
+            kbd_motion_key(&keyboard, time, cur_x, cur_y);
+        }
     }
 }
 
@@ -359,6 +380,16 @@ wl_pointer_button(void *data, struct wl_pointer *wl_pointer, uint32_t serial,
 
     struct key *next_key;
     cur_press = state == WL_POINTER_BUTTON_STATE_PRESSED;
+
+    if (keyboard.swipe_arrows) {
+        if (cur_press) {
+            if (cur_x >= 0 && cur_y >= 0)
+                swipe_down(cur_x, cur_y, time);
+        } else {
+            swipe_up(time);
+        }
+        return;
+    }
 
     if (cur_press) {
         kbd_unpress_key(&keyboard, time);
@@ -661,6 +692,16 @@ usage(char *argv0)
     fprintf(stderr, "  -o          - Print pressed keys to standard output\n");
     fprintf(stderr,
             "  -O          - Print intersected keys to standard output\n");
+    fprintf(stderr,
+            "  --swipe-arrows         - Swipe over the keyboard to emit arrow"
+            " keys (left/right/up/down)\n");
+    fprintf(stderr,
+            "  --swipe-step [int]     - Pixels of swipe movement per emitted"
+            " arrow key (default: one key height)\n");
+    fprintf(stderr,
+            "  --swipe-hold [int]     - Holding a key still for this many ms"
+            " types/repeats it instead of swiping (default: 200, 0 to"
+            " disable)\n");
     fprintf(stderr, "  -H [int]    - Height in pixels\n");
     fprintf(stderr, "  -L [int]    - Landscape height in pixels\n");
     fprintf(stderr, "  -R [int]    - Rounding radius in pixels\n");
@@ -882,6 +923,8 @@ main(int argc, char **argv)
     keyboard.exclusive = true;
     keyboard.show_popup = true;
     keyboard.show_highlight = true;
+    keyboard.swipe_step = 0;
+    keyboard.swipe_hold_ms = 200;
 
     uint8_t alpha = 0;
     bool alpha_defined = false;
@@ -1038,6 +1081,23 @@ main(int argc, char **argv)
             keyboard.print = true;
         } else if (!strcmp(argv[i], "-O")) {
             keyboard.print_intersect = true;
+        } else if ((!strcmp(argv[i], "-swipe-arrows")) ||
+                   (!strcmp(argv[i], "--swipe-arrows"))) {
+            keyboard.swipe_arrows = true;
+        } else if ((!strcmp(argv[i], "-swipe-step")) ||
+                   (!strcmp(argv[i], "--swipe-step"))) {
+            if (i >= argc - 1) {
+                usage(argv[0]);
+                exit(1);
+            }
+            keyboard.swipe_step = atoi(argv[++i]);
+        } else if ((!strcmp(argv[i], "-swipe-hold")) ||
+                   (!strcmp(argv[i], "--swipe-hold"))) {
+            if (i >= argc - 1) {
+                usage(argv[0]);
+                exit(1);
+            }
+            keyboard.swipe_hold_ms = atoi(argv[++i]);
         } else if ((!strcmp(argv[i], "-hidden")) ||
                    (!strcmp(argv[i], "--hidden"))) {
             hidden = true;
@@ -1154,16 +1214,24 @@ main(int argc, char **argv)
     if (!hidden)
         show();
 
-    struct pollfd fds[2];
+    struct pollfd fds[3];
     int WAYLAND_FD = 0;
     int SIGNAL_FD = 1;
+    int TIMER_FD = 2;
     fds[WAYLAND_FD].events = POLLIN;
     fds[SIGNAL_FD].events = POLLIN;
+    fds[TIMER_FD].events = POLLIN;
 
     fds[WAYLAND_FD].fd = wl_display_get_fd(display);
     if (fds[WAYLAND_FD].fd == -1) {
         die("Failed to get wayland_fd: %d\n", errno);
     }
+
+    fds[TIMER_FD].fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    if (fds[TIMER_FD].fd == -1) {
+        die("Failed to create swipe timer fd: %d\n", errno);
+    }
+    swipe_init(&keyboard, fds[TIMER_FD].fd);
 
     sigset_t signal_mask;
     sigemptyset(&signal_mask);
@@ -1182,7 +1250,7 @@ main(int argc, char **argv)
 
     while (run_display) {
         wl_display_flush(display);
-        poll(fds, 2, -1);
+        poll(fds, 3, -1);
 
         if (fds[WAYLAND_FD].revents & POLLIN)
             wl_display_dispatch(display);
@@ -1206,6 +1274,13 @@ main(int argc, char **argv)
                 toggle_visibility();
             else if (si.ssi_signo == SIGPIPE)
                 pipewarn();
+        }
+
+        if (fds[TIMER_FD].revents & POLLIN) {
+            uint64_t expirations;
+            if (read(fds[TIMER_FD].fd, &expirations, sizeof(expirations)) == sizeof(expirations)) {
+                swipe_hold();
+            }
         }
     }
 

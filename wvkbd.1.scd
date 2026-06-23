@@ -30,6 +30,16 @@ can be patched to add new features.
 *-O*
 	print intersected keys to standard output.
 
+*--swipe-arrows*
+	swipe over the keyboard to emit arrow keys.
+
+*--swipe-step* _pixels_
+	swipe movement per emitted arrow key (default: one key height).
+
+*--swipe-hold* _ms_
+	hold a key still this long to type/auto-repeat it instead of swiping
+	(default: 200, 0 to disable).
+
 *-l* _layers_
 	comma separated list of layers in vertical/portrait mode.
 
