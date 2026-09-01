@@ -396,11 +396,11 @@ kbd_motion_key(struct kbd *kb, uint32_t time, uint32_t x, uint32_t y)
             kb->last_swipe = intersect_key;
             kbd_draw_key(kb, kb->last_swipe, Swipe);
         }
-    } else {
+        kbd_clear_last_popup(kb);
+    } else if (kbd_get_key(kb, x, y) != kb->last_press) {
         kbd_unpress_key(kb, time);
+        kbd_clear_last_popup(kb);
     }
-
-    kbd_clear_last_popup(kb);
 }
 
 void
